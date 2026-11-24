@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "test": "node --test"
   },
   "dependencies": {
-    "@clerk/clerk-js": "^6.0.0"
+    "@clerk/clerk-js": "^6.0.0",
+    "leaflet": "^1.9.4"
   },
   "devDependencies": {
     "vite": "^6.0.0"
