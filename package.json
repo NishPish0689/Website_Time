@@ -1,0 +1,16 @@
+{
+  "name": "simple-clerk-auth",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@clerk/clerk-js": "^6.0.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
