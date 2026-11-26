@@ -78,12 +78,12 @@ export function summarizeReports(records, serotypeStartDate = '') {
   return summaries
 }
 
-export function hasCasesWithoutSerotype(summary) {
+export function hasCasesWithoutDominantSerotype(summary) {
   const caseCount = Number(summary?.latest?.CASES)
   return (
     Number.isFinite(caseCount) &&
     caseCount > 0 &&
-    !summary?.serotypeReportCount
+    !summary?.dominantSerotype
   )
 }
 

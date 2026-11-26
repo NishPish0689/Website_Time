@@ -3,7 +3,7 @@ import 'leaflet/dist/leaflet.css'
 import './dashboard.css'
 import {
   fetchDengueReports,
-  hasCasesWithoutSerotype,
+  hasCasesWithoutDominantSerotype,
   summarizeReports,
 } from './dengue-data.js'
 
@@ -119,11 +119,11 @@ export async function mountDashboard(root, clerk) {
               .join('')}
             <span class="legend-item">
               <i class="legend-swatch" style="--swatch-color:${CASES_WITHOUT_SEROTYPE_COLOR}" aria-hidden="true"></i>
-              Cases reported, no serotype info
+              Cases reported, no unique serotype
             </span>
             <span class="legend-item">
               <i class="legend-swatch" style="--swatch-color:${UNREPORTED_COLOR}" aria-hidden="true"></i>
-              Tied serotype / no case report
+              No positive case report
             </span>
           </div>
           <p id="data-warning" class="data-warning" role="status" aria-live="polite"></p>
@@ -294,7 +294,7 @@ export async function mountDashboard(root, clerk) {
     const summary = summaries.get(code)
     const serotype = summary?.dominantSerotype
     const fillColor = SEROTYPE_COLORS[serotype] ??
-      (hasCasesWithoutSerotype(summary)
+      (hasCasesWithoutDominantSerotype(summary)
         ? CASES_WITHOUT_SEROTYPE_COLOR
         : UNREPORTED_COLOR)
     return {
@@ -478,8 +478,8 @@ function makeTooltip(name, summary) {
 
   const serotypeSummary = summary.dominantSerotype
     ? `Most flagged: ${summary.dominantSerotype} (${percentFormat.format(summary.serotypePercentages[summary.dominantSerotype])}%)`
-    : hasCasesWithoutSerotype(summary)
-      ? 'Dengue cases reported; serotype information unavailable'
+    : hasCasesWithoutDominantSerotype(summary)
+      ? 'Dengue cases reported; no unique serotype is available'
       : 'No unique most-flagged serotype'
   return `
     <strong>${escapeHtml(name)}</strong>

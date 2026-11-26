@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   fetchDengueReports,
-  hasCasesWithoutSerotype,
+  hasCasesWithoutDominantSerotype,
   summarizeReports,
 } from '../src/dengue-data.js'
 
@@ -175,7 +175,7 @@ test('keeps historical WHO case counts while limiting serotypes to the requested
   assert.equal(country.dominantSerotype, null)
 })
 
-test('identifies positive case reports without serotype data separately from ties and zero cases', () => {
+test('identifies positive case reports without a unique serotype separately from zero cases', () => {
   const noSerotype = summarizeReports([
     {
       ISO3: 'AAA',
@@ -210,8 +210,8 @@ test('identifies positive case reports without serotype data separately from tie
     },
   ]).get('CCC')
 
-  assert.equal(hasCasesWithoutSerotype(noSerotype), true)
-  assert.equal(hasCasesWithoutSerotype(tie), false)
-  assert.equal(hasCasesWithoutSerotype(zeroCases), false)
-  assert.equal(hasCasesWithoutSerotype(undefined), false)
+  assert.equal(hasCasesWithoutDominantSerotype(noSerotype), true)
+  assert.equal(hasCasesWithoutDominantSerotype(tie), true)
+  assert.equal(hasCasesWithoutDominantSerotype(zeroCases), false)
+  assert.equal(hasCasesWithoutDominantSerotype(undefined), false)
 })
