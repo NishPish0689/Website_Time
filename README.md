@@ -15,22 +15,18 @@ out and the dengue dashboard when signed in. The publishable key is intended
 for browser use; never put a Clerk secret key in this app.
 
 The map uses country-level reports from the
-[WHO Global Dengue Surveillance API](https://worldhealthorg.shinyapps.io/dengue_global/),
-recent human dengue sequences from the
-[NCBI GenBank Datasets API](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/reference-docs/data-packages/virus-genome/),
-and Natural Earth 1:50m country boundaries. WHO data takes priority; GenBank
-sequence data is used only when WHO has no serotype results for that country.
-WHO does not provide state-level rows in this feed, so India is shown as one
-country.
+[WHO Global Dengue Surveillance API](https://worldhealthorg.shinyapps.io/dengue_global/)
+and Natural Earth 1:50m country boundaries. It loads the full available WHO
+report history and shows each country's latest valid case-count report. The
+reported date is shown with the count because countries may have different,
+older reporting dates. WHO does not provide state-level rows in this feed, so
+India is shown as one country.
 
 WHO serotype fields are presence flags, not case counts. The detailed view
-shows the percentage of typed WHO reports that flag each type. If GenBank is
-used as a fallback, percentages instead show the share of recent, dated human
-sequence submissions assigned to each type. Sequence counts are not case
-counts or population prevalence: they reflect uneven sequencing and
-submission. Neither source supports reliable serotype values for every
-country. Ties and countries with no usable source data remain neutral rather
-than receiving estimated values.
+shows the percentage of typed WHO reports from the last two years that flag
+each type. Serotype values are optional: missing or tied values remain
+unreported/neutral and are never estimated. NCBI GenBank is not used as a
+fallback.
 
 The dashboard also includes a local symptom check-in. It can show a country's
 available surveillance summary alongside general dengue symptom and urgent
