@@ -2,11 +2,8 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './dashboard.css'
 import {
-  createCountryCodeLookup,
   fetchDengueReports,
-  fetchGenBankSerotypeRecords,
-  mergeGenBankFallback,
-  summarizeGenBankRecords,
+  hasCasesWithoutSerotype,
   summarizeReports,
 } from './dengue-data.js'
 
@@ -16,6 +13,7 @@ const SEROTYPE_COLORS = {
   'DEN V 3': '#fb7185',
   'DEN V 4': '#a78bfa',
 }
+const CASES_WITHOUT_SEROTYPE_COLOR = '#f97316'
 const UNREPORTED_COLOR = '#54545f'
 const numberFormat = new Intl.NumberFormat()
 const percentFormat = new Intl.NumberFormat(undefined, {
@@ -56,12 +54,12 @@ export async function mountDashboard(root, clerk) {
             <p class="dashboard-kicker">GLOBAL SURVEILLANCE</p>
             <h2>Dengue activity by country</h2>
             <p class="dashboard-description">
-              Explore reported cases and which dengue serotypes appear most often in surveillance reports.
+              Explore the latest available country case reports and any reported serotype information.
             </p>
           </div>
           <div class="data-window">
             <span class="status-dot" aria-hidden="true"></span>
-            <span id="data-status" role="status" aria-live="polite">Loading WHO and GenBank data...</span>
+            <span id="data-status" role="status" aria-live="polite">Loading WHO case reports...</span>
           </div>
         </section>
 
@@ -69,7 +67,7 @@ export async function mountDashboard(root, clerk) {
           <div class="map-toolbar">
             <div>
               <h3>World map</h3>
-              <p>Hover for a quick report. Select a country for serotype percentages.</p>
+              <p>Hover for the latest available case report. Select a country for details.</p>
             </div>
             <div class="map-actions">
               <label class="sr-only" for="country-picker">Choose a country</label>
@@ -88,7 +86,7 @@ export async function mountDashboard(root, clerk) {
               <p id="country-period" class="country-period">Select a country on the map.</p>
               <dl class="country-metrics">
                 <div>
-                  <dt>Latest WHO-reported cases</dt>
+                  <dt>Latest available WHO cases</dt>
                   <dd id="country-cases">—</dd>
                 </div>
                 <div>
@@ -108,7 +106,7 @@ export async function mountDashboard(root, clerk) {
           </div>
 
           <div class="map-legend" aria-label="Map legend">
-            <span class="legend-heading">Most frequently reported serotype</span>
+            <span class="legend-heading">Serotype and case-data status</span>
             ${Object.entries(SEROTYPE_COLORS)
               .map(
                 ([serotype, color]) => `
@@ -120,8 +118,12 @@ export async function mountDashboard(root, clerk) {
               )
               .join('')}
             <span class="legend-item">
+              <i class="legend-swatch" style="--swatch-color:${CASES_WITHOUT_SEROTYPE_COLOR}" aria-hidden="true"></i>
+              Cases reported, no serotype info
+            </span>
+            <span class="legend-item">
               <i class="legend-swatch" style="--swatch-color:${UNREPORTED_COLOR}" aria-hidden="true"></i>
-              Tie / not reported
+              Tied serotype / no case report
             </span>
           </div>
           <p id="data-warning" class="data-warning" role="status" aria-live="polite"></p>
@@ -129,17 +131,15 @@ export async function mountDashboard(root, clerk) {
 
         <footer class="dashboard-footer">
           <p>
-            WHO flags are used first; where WHO has no serotype data, NCBI GenBank human sequence
-            submissions are used as a fallback. WHO percentages are the share of typed reports
-            flagging each type. GenBank percentages are the share of recent typed sequences and
-            are not population prevalence estimates. Mixed WHO reports can flag multiple types.
-            Ties and missing data are neutral.
+            Case counts show each country’s latest available valid WHO report, which may be older
+            than the latest global report. Serotype percentages use WHO reports from the last two
+            years only; unavailable or tied serotype results remain unassigned. No values are
+            estimated.
           </p>
           <p>
             Sources:
-            <a href="https://worldhealthorg.shinyapps.io/dengue_global/" target="_blank" rel="noreferrer">WHO Global Dengue Surveillance</a>,
-            <a href="https://www.ncbi.nlm.nih.gov/datasets/docs/v2/reference-docs/data-packages/virus-genome/" target="_blank" rel="noreferrer">NCBI GenBank dengue sequences</a>,
-            map boundaries from <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a>.
+            <a href="https://worldhealthorg.shinyapps.io/dengue_global/" target="_blank" rel="noreferrer">WHO Global Dengue Surveillance</a>
+            and map boundaries from <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a>.
           </p>
         </footer>
         </section>
@@ -271,7 +271,6 @@ export async function mountDashboard(root, clerk) {
     throw new Error(`Could not load country boundaries (${boundaryResponse.status}).`)
   }
   const boundaries = await boundaryResponse.json()
-  const countryCodeByName = createCountryCodeLookup(boundaries.features)
   const countries = boundaries.features
     .map((feature) => ({
       feature,
@@ -292,12 +291,17 @@ export async function mountDashboard(root, clerk) {
   }
 
   function getStyle(code, selected = false) {
-    const serotype = summaries.get(code)?.dominantSerotype
+    const summary = summaries.get(code)
+    const serotype = summary?.dominantSerotype
+    const fillColor = SEROTYPE_COLORS[serotype] ??
+      (hasCasesWithoutSerotype(summary)
+        ? CASES_WITHOUT_SEROTYPE_COLOR
+        : UNREPORTED_COLOR)
     return {
       color: selected ? '#ffffff' : '#30303a',
       weight: selected ? 1.5 : 0.65,
       opacity: 1,
-      fillColor: SEROTYPE_COLORS[serotype] ?? UNREPORTED_COLOR,
+      fillColor,
       fillOpacity: selected ? 0.95 : 0.8,
     }
   }
@@ -346,31 +350,21 @@ export async function mountDashboard(root, clerk) {
       : 'Not reported'
     root.querySelector('#country-period').textContent = summary?.latest
       ? `${formatDate(summary.latest.START_DATE)} · ${formatPeriod(summary.latest.DATE_TYPE)}`
-      : 'No WHO case count reported in the last two years.'
+      : 'No WHO case count is available for this country.'
 
-    root.querySelector('#serotype-count-label').textContent =
-      summary?.serotypeSource === 'GenBank'
-        ? 'Sequences analyzed'
-        : 'Serotype reports analyzed'
+    root.querySelector('#serotype-count-label').textContent = 'Serotype reports analyzed'
     root.querySelector('#country-serotype-reports').textContent =
       summary?.serotypeReportCount
         ? numberFormat.format(summary.serotypeReportCount)
         : 'Not reported'
     renderSerotypeBreakdown(root.querySelector('#serotype-breakdown'), summary)
-    root.querySelector('#serotype-analysis-title').textContent =
-      summary?.serotypeSource === 'GenBank'
-        ? 'Serotype distribution in sequences'
-        : 'Serotype presence by report'
+    root.querySelector('#serotype-analysis-title').textContent = 'Serotype presence by report'
     root.querySelector('#serotype-analysis-note').textContent =
-      summary?.serotypeSource === 'GenBank'
-        ? 'Share of recent GenBank sequences by serotype; sequence sampling is not population prevalence.'
-        : 'Percentage of WHO reports with serotype results that flagged each type.'
+      'Percentage of WHO reports from the last two years with serotype results that flagged each type.'
     const note = root.querySelector('#country-note')
-    note.textContent = summary?.serotypeSource === 'GenBank'
-      ? 'Fallback source: recent human dengue sequences in NCBI GenBank. Sequence coverage is uneven and is not case surveillance.'
-      : summary?.serotypeReportCount
-        ? 'Source: WHO country-level surveillance reports from the last two years; India is shown as one country.'
-      : 'No recent WHO serotype results or eligible GenBank sequences are available. No values are estimated.'
+    note.textContent = summary?.serotypeReportCount
+      ? 'Source: recent WHO country-level surveillance reports; India is shown as one country.'
+      : 'No recent WHO serotype results are available. Case counts are reported independently; no serotype values are estimated.'
   }
 
   let submittedCheckin = null
@@ -423,46 +417,17 @@ export async function mountDashboard(root, clerk) {
   async function refreshData() {
     refreshButton.disabled = true
     refreshButton.textContent = 'Refreshing...'
-    dataStatus.textContent = 'Loading WHO and NCBI GenBank data...'
+    dataStatus.textContent = 'Loading WHO case reports...'
     dataWarning.textContent = ''
 
     try {
-      const [whoResult, genBankResult] = await Promise.allSettled([
-        fetchDengueReports(),
-        fetchGenBankSerotypeRecords(),
-      ])
-      const sourceErrors = []
-      let reports = []
-      let whoSummaries = new Map()
-      let genBankSummaries = new Map()
-      let genBankFallbackCountryCount = 0
-
-      if (whoResult.status === 'fulfilled') {
-        reports = whoResult.value
-        whoSummaries = summarizeReports(reports)
-      } else {
-        sourceErrors.push(`WHO: ${whoResult.reason.message}`)
-      }
-
-      if (genBankResult.status === 'fulfilled') {
-        const { records, startDate, endDate } = genBankResult.value
-        genBankSummaries = summarizeGenBankRecords(
-          records,
-          countryCodeByName,
-          startDate,
-          endDate,
-        )
-        genBankFallbackCountryCount = [...genBankSummaries.keys()].filter(
-          (iso3) => !whoSummaries.get(iso3)?.serotypeReportCount,
-        ).length
-      } else {
-        sourceErrors.push(`NCBI GenBank: ${genBankResult.reason.message}`)
-      }
-
-      if (sourceErrors.length === 2) {
-        throw new Error(sourceErrors.join(' '))
-      }
-      summaries = mergeGenBankFallback(whoSummaries, genBankSummaries)
+      const reports = await fetchDengueReports()
+      const serotypeStart = new Date()
+      serotypeStart.setUTCFullYear(serotypeStart.getUTCFullYear() - 2)
+      summaries = summarizeReports(
+        reports,
+        serotypeStart.toISOString().slice(0, 10),
+      )
       countryLayer.setStyle((feature) =>
         getStyle(
           getCountryCode(feature.properties),
@@ -470,27 +435,17 @@ export async function mountDashboard(root, clerk) {
         ),
       )
 
-      const latestDate = reports.reduce(
-        (latest, report) =>
-          report.START_DATE > latest ? report.START_DATE : latest,
+      const latestCaseDate = [...summaries.values()].reduce(
+        (latest, summary) =>
+          summary.latest?.START_DATE > latest ? summary.latest.START_DATE : latest,
         '',
       )
-      const whoCountries = [...whoSummaries.values()].filter(
+      const caseCountries = [...summaries.values()].filter(
         (summary) => summary.latest,
       ).length
-      const sourceStatus = [
-        whoResult.status === 'fulfilled'
-          ? `WHO ${whoCountries} countries${latestDate ? ` through ${formatDate(latestDate)}` : ''}`
-          : null,
-        genBankResult.status === 'fulfilled'
-          ? `GenBank ${genBankSummaries.size} countries · ${genBankFallbackCountryCount} filling WHO gaps`
-          : null,
-      ].filter(Boolean)
-      dataStatus.textContent = sourceStatus.join(' · ') || 'No dengue data available.'
-      if (sourceErrors.length) {
-        console.error('Some dengue data sources could not be loaded.', sourceErrors)
-        dataWarning.textContent = sourceErrors.join(' ')
-      }
+      dataStatus.textContent = caseCountries
+        ? `WHO case data: ${caseCountries} countries · latest available report ${formatDate(latestCaseDate)}`
+        : 'No WHO case data available.'
       if (selectedCode) {
         const selected = countries.find((country) => country.code === selectedCode)
         if (selected) renderCountryDetails(selected.name, summaries.get(selectedCode))
@@ -498,7 +453,7 @@ export async function mountDashboard(root, clerk) {
       renderCheckinResult()
     } catch (error) {
       console.error('Dengue surveillance data could not be loaded.', error)
-      dataStatus.textContent = 'WHO surveillance data could not be loaded.'
+      dataStatus.textContent = 'WHO case data could not be loaded.'
       dataWarning.textContent = error.message
     } finally {
       refreshButton.disabled = false
@@ -518,19 +473,19 @@ function getCountryCode(properties) {
 
 function makeTooltip(name, summary) {
   if (!summary) {
-    return `<strong>${escapeHtml(name)}</strong><span>No recent WHO or NCBI serotype data</span>`
+    return `<strong>${escapeHtml(name)}</strong><span>No WHO case report data available</span>`
   }
 
-  const dominantLabel = summary.serotypeSource === 'GenBank' ? 'Most sequenced' : 'Most flagged'
   const serotypeSummary = summary.dominantSerotype
-    ? `${dominantLabel}: ${summary.dominantSerotype} (${percentFormat.format(summary.serotypePercentages[summary.dominantSerotype])}%)`
-    : 'No unique most-flagged serotype'
-  const source = summary.serotypeSource === 'GenBank' ? 'NCBI sequence data' : 'WHO surveillance'
+    ? `Most flagged: ${summary.dominantSerotype} (${percentFormat.format(summary.serotypePercentages[summary.dominantSerotype])}%)`
+    : hasCasesWithoutSerotype(summary)
+      ? 'Dengue cases reported; serotype information unavailable'
+      : 'No unique most-flagged serotype'
   return `
     <strong>${escapeHtml(name)}</strong>
     <span>${summary.latest ? `WHO: ${numberFormat.format(summary.latest.CASES)} cases · ${formatDate(summary.latest.START_DATE)}` : 'WHO case count not reported'}</span>
     <span>${escapeHtml(serotypeSummary)}</span>
-    <span>${summary.serotypeReportCount ? `${numberFormat.format(summary.serotypeReportCount)} ${summary.serotypeSource === 'GenBank' ? 'sequences' : 'serotype reports'} · ${source}` : 'Serotype data not reported'}</span>
+    <span>${summary.serotypeReportCount ? `${numberFormat.format(summary.serotypeReportCount)} WHO serotype reports` : 'Serotype data not reported'}</span>
   `
 }
 
@@ -552,7 +507,7 @@ function renderSerotypeBreakdown(container, summary) {
           <div class="serotype-track" role="meter" aria-label="${serotype} report presence" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentage}">
             <span style="--swatch-color:${color};--bar-width:${Math.min(percentage, 100)}%"></span>
           </div>
-          <p>${numberFormat.format(summary.serotypeCounts[serotype])} of ${numberFormat.format(summary.serotypeReportCount)} ${summary.serotypeSource === 'GenBank' ? 'sequences' : 'reports'}</p>
+          <p>${numberFormat.format(summary.serotypeCounts[serotype])} of ${numberFormat.format(summary.serotypeReportCount)} reports</p>
         </div>
       `
     })
